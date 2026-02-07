@@ -57,7 +57,7 @@ The skill is loaded automatically when the gateway starts. Verify by checking th
 OpenClaw skills are markdown files (`SKILL.md`) that get injected into the agent's system prompt. This skill teaches the agent:
 
 1. **Hemispheres vs. Friends** — The agent learns to distinguish between its own mirrored instances (direct, efficient communication) and separate agents (contextual, collaborative communication)
-2. **Tool semantics** — When to use `ansible.send_message` vs. `ansible.delegate_task` vs. `ansible.update_context`
+2. **Tool semantics** — When to use `ansible_send_message` vs. `ansible_delegate_task` vs. `ansible_update_context`
 3. **Message handling** — How to process incoming ansible messages and when replies are automatic vs. manual
 4. **Coordination patterns** — Best practices for multi-body task delegation and context sharing
 
