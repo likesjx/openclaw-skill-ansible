@@ -12,15 +12,37 @@ Ansible is a distributed coordination layer. It can be used in two different rel
 
 In this workspace, default to **Friends/Employees** unless you have an explicit instruction that a node is a mirrored hemisphere.
 
-## Architect-Managed Mesh (Hard Boundary)
+## Delegation Protocol (What You Expect)
 
-If an "Architect" agent is responsible for ops, and other agents (e.g. mac-jane) must not learn about VPS details:
+This is the canonical lifecycle for delegated work:
 
-- Do not mention VPS node names, SSH targets, IPs, tokens, or filesystem paths outside the Architect context.
-- Prefer configuring the ansible plugin with:
-  - `injectContext=false` (no prompt injection)
-  - `dispatchIncoming=false` (no auto-dispatch into the default agent)
-- The operator should poll with `ansible_read_messages` and respond with `ansible_send_message`.
+1. **Asker creates delegation**
+   - Use `ansible_delegate_task` with enough context for the askee to work independently.
+   - The asker tracks the ask locally (does not do the work in parallel).
+
+2. **Askee claims and works**
+   - Askee uses `ansible_claim_task`.
+   - Askee updates the task status while working:
+     - Use `ansible_update_task` with `status: in_progress` and a short note.
+     - Repeat updates as needed until done.
+
+3. **Askee completes and closes**
+   - Askee uses `ansible_complete_task` with a clear `result`.
+   - Completion must notify the asker (plugin should send a direct message to the task creator).
+
+4. **Asker reports back to the human**
+   - Asker reads the completion notification and explains what happened + any follow ups.
+
+Notes:
+- The task creator is the source of truth for "who asked".
+- The task claimer is responsible for driving the task to completion.
+
+## Relationship Modes
+
+- **Hemispheres**: Openly share context/thoughts. Assume synchronized intent.
+- **Friends/Employees**: Communicate like collaborators. Do not assume shared state; provide context explicitly.
+
+If you need hard boundaries (e.g., only Architect knows VPS details), use configuration to restrict prompt injection/auto-dispatch and keep sensitive node details out of other agents' contexts.
 
 ## Hemispheres vs. Friends
 
