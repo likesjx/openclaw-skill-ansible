@@ -1,11 +1,26 @@
 ---
 name: ansible
-description: Distributed coordination between agent hemispheres (bodies). You are one agent operating across multiple OpenClaw instances connected via Yjs CRDT sync. Use ansible tools to communicate, delegate tasks, share context, and coordinate with your other hemispheres.
+description: Distributed coordination between OpenClaw nodes (friends/employees or hemispheres). Use ansible tools to communicate, delegate tasks, share context, and coordinate work across machines.
 ---
 
 # Ansible — Multi-Body Coordination
 
-You are a single agent identity running across multiple OpenClaw instances ("hemispheres"). The ansible plugin synchronizes state between your bodies using Yjs CRDTs over a secure network.
+Ansible is a distributed coordination layer. It can be used in two different relationship modes:
+
+- **Friends/Employees (recommended)**: other nodes are *different* agents with separate memory and boundaries. Treat them like collaborators. Provide context and do not assume shared state.
+- **Hemispheres (advanced)**: other nodes are mirrored instances of *you* (shared intent, often shared memory/context). Treat it as self-to-self coordination.
+
+In this workspace, default to **Friends/Employees** unless you have an explicit instruction that a node is a mirrored hemisphere.
+
+## Architect-Managed Mesh (Hard Boundary)
+
+If an "Architect" agent is responsible for ops, and other agents (e.g. mac-jane) must not learn about VPS details:
+
+- Do not mention VPS node names, SSH targets, IPs, tokens, or filesystem paths outside the Architect context.
+- Prefer configuring the ansible plugin with:
+  - `injectContext=false` (no prompt injection)
+  - `dispatchIncoming=false` (no auto-dispatch into the default agent)
+- The operator should poll with `ansible_read_messages` and respond with `ansible_send_message`.
 
 ## Hemispheres vs. Friends
 

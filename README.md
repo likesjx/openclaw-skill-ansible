@@ -1,6 +1,6 @@
 # openclaw-skill-ansible
 
-OpenClaw skill for the [ansible plugin](https://github.com/likesjx/openclaw-plugin-ansible) — teaches your agent how to coordinate across multiple OpenClaw instances ("hemispheres").
+OpenClaw skill for the [ansible plugin](https://github.com/likesjx/openclaw-plugin-ansible) — teaches your agent how to coordinate across multiple OpenClaw nodes (friends/employees or hemispheres).
 
 ## What This Skill Does
 
@@ -12,6 +12,14 @@ When the ansible plugin is installed, your agent gets tools for inter-hemisphere
 - **Session behavior** — How ansible sessions and message routing work under the hood
 
 Without this skill, the agent has the tools but doesn't know the conventions for using them effectively.
+
+## Recommended: Architect-Managed Ops Mesh
+
+If you want only a dedicated operator agent (e.g., Architect) to manage cross-node coordination, configure the plugin with:
+- `injectContext=false` (no cross-node prompt injection)
+- `dispatchIncoming=false` (no auto-dispatch of ansible messages into the default agent)
+
+In this mode, the operator agent polls using `ansible_read_messages` and replies using `ansible_send_message`.
 
 ## Prerequisites
 
