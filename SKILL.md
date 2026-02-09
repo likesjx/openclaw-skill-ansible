@@ -19,7 +19,7 @@ Treat Ansible as a **durable inbox** (shared Yjs state), not as “turns always 
 Rules:
 
 - **Unread messages are source of truth.** Always use `ansible_status` and `ansible_read_messages` to confirm what is pending.
-- **Auto-dispatch is best-effort realtime.** It may not trigger for backlog (messages that arrived while you were offline) and it does not guarantee retry after a dispatch failure.
+- **Auto-dispatch is best-effort delivery.** It injects inbound work into the agent loop when possible, and on reconnect it reconciles backlog deterministically. Treat the shared Yjs doc as the source of truth anyway.
 - **If you read messages via tools, you must reply explicitly.** Only the auto-dispatch path can deliver an automatic reply back through the Yjs doc. If you are polling with `ansible_read_messages`, you must send responses with `ansible_send_message`.
 - **Use correlation IDs for serious ops.** When replying, include `corr:` pointing at the original `messageId` so both sides can track threads deterministically.
 
@@ -35,7 +35,7 @@ There is still a **listener**: the ansible plugin can observe Yjs state and atte
 But for reliability you should assume:
 
 - The listener is **best-effort** (subject to connectivity, process lifecycle, and dispatch failures).
-- The **sweep** is the reliability backstop (ensures backlog is handled and the loop is closed).
+- The **sweep** is the operational backstop: it is how you detect stuck work and close loops with explicit ownership and notifications.
 
 Operationally:
 
@@ -56,6 +56,56 @@ Tooling:
 - `ansible_lock_sweep_status` reports whether the service is enabled and what it has been doing (last run, totals, config).
 
 If a gateway/operator reports “agent hangs forever”, check `ansible_lock_sweep_status` first.
+
+## Coordinator Sweep Reporting (Non-Noisy, Actionable Only)
+
+Goal: sweeps should *not* spam humans or other agents. Only report problems that are fixable now, with a concrete action.
+
+### Who Gets Notified
+
+- Coordinator (default: `vps-jane`) notifies the maintenance agent (Architect) only when `DEGRADED`.
+- Coordinator does not message the human user unless explicitly asked.
+
+### Output Format (Strict)
+
+When `OK`: be silent (default) OR emit a single line if explicitly requested:
+
+`OK: heartbeat=online, tasks=0, unread=0`
+
+When `DEGRADED`: send one concise message with:
+
+- `DEGRADED:` one-line summary
+- `Action:` the one-step fix to try first
+- `Evidence:` 1-2 concrete data points (timestamps/ids), no long lists
+
+### DEGRADED Triggers (Actionable)
+
+Only trigger on issues where the coordinator can do something right now:
+
+- Coordinator heartbeat stale (e.g. `ageSeconds > 2 * sweepEverySeconds`)
+  - Action: restart gateway or investigate timer/crash.
+- Backbone connectivity broken (repeated `ECONNREFUSED` / sync failures observed)
+  - Action: restart gateway; check docker/container lifecycle.
+- Stuck tasks:
+  - pending tasks assigned to an online node older than threshold
+  - claimed/in_progress tasks with no updates older than threshold
+  - Action: nudge assignee; reassign or escalate.
+- Unread messages addressed to coordinator (or broadcast) older than threshold
+  - Action: dispatch/reconcile; reply/route.
+- Session lock sweeper removing locks repeatedly or reporting persistent locks
+  - Action: investigate session lock source; adjust staleSeconds if needed.
+
+### Things To Suppress (Noise)
+
+Do not report:
+
+- stale historical pulse entries ("zombie nodes") by themselves
+- registry clutter / old container ids
+- counts that you cannot verify with `ansible_read_messages` / task list tools
+
+### Required Data Source
+
+Sweeps must rely on `ansible_status` (and `ansible_read_messages` plus task tools when needed). Do not re-implement unread counting or stale classification in the coordinator.
 
 ## Setup Playbooks (What To Do In Real Life)
 
@@ -136,13 +186,18 @@ Tools:
 
 Every sweep:
 
-- read unread messages (`ansible_read_messages`)
-- claim/advance tasks that are unassigned but match coordinator capabilities (optional)
+- read status (`ansible_status`) and unread messages (`ansible_read_messages`)
+- claim/advance tasks that are unassigned but match coordinator capabilities (optional, do not steal work)
 - ensure each inbound request gets one of:
   - delegated as a task
   - answered directly with status/result
   - rejected with an explicit reason + next step
 - when work completes, notify the requester (message with `corr:` back to original request)
+
+Coordinator report policy:
+
+- Default: silent on OK.
+- Only emit a report when there is an actionable `DEGRADED` trigger (see "Coordinator Sweep Reporting").
 
 ### Long-Running Conversations
 

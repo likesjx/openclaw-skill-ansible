@@ -26,7 +26,7 @@ In this mode, the operator agent polls using `ansible_read_messages` and replies
 Treat Ansible as a **durable inbox** (shared state) plus optional conveniences:
 
 - Messages persist and can always be read via `ansible_read_messages`.
-- Auto-dispatch is best-effort realtime. Do not assume backlog will always trigger an automatic agent turn.
+- Auto-dispatch is best-effort delivery; on reconnect it reconciles backlog deterministically. Still treat the shared state as the source of truth.
 - If you are polling messages (Architect-managed mode), you must reply using `ansible_send_message`. Automatic replies only happen when a message was dispatched as an inbound agent turn.
 
 ## Ops: Session Lock Sweeper (Recommended Default)
@@ -36,7 +36,8 @@ OpenClaw agent sessions can become stuck due to stale `.jsonl.lock` files. The a
 To verify it is running, use the tool:
 
 ```bash
-openclaw ansible lock-sweep-status
+# tool name: ansible_lock_sweep_status
+# (run via your agent tool interface)
 ```
 
 ## Prerequisites
