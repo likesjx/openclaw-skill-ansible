@@ -21,6 +21,14 @@ If you want only a dedicated operator agent (e.g., Architect) to manage cross-no
 
 In this mode, the operator agent polls using `ansible_read_messages` and replies using `ansible_send_message`.
 
+## Reliability Notes (Important)
+
+Treat Ansible as a **durable inbox** (shared state) plus optional conveniences:
+
+- Messages persist and can always be read via `ansible_read_messages`.
+- Auto-dispatch is best-effort realtime. Do not assume backlog will always trigger an automatic agent turn.
+- If you are polling messages (Architect-managed mode), you must reply using `ansible_send_message`. Automatic replies only happen when a message was dispatched as an inbound agent turn.
+
 ## Prerequisites
 
 ### 1. OpenClaw

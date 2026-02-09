@@ -12,6 +12,22 @@ Ansible is a distributed coordination layer. It can be used in two different rel
 
 In this workspace, default to **Friends/Employees** unless you have an explicit instruction that a node is a mirrored hemisphere.
 
+## Reliability Rules (If You Want To Rely On Ansible Completely)
+
+Treat Ansible as a **durable inbox** (shared Yjs state), not as “turns always trigger automatically”.
+
+Rules:
+
+- **Unread messages are source of truth.** Always use `ansible_status` and `ansible_read_messages` to confirm what is pending.
+- **Auto-dispatch is best-effort realtime.** It may not trigger for backlog (messages that arrived while you were offline) and it does not guarantee retry after a dispatch failure.
+- **If you read messages via tools, you must reply explicitly.** Only the auto-dispatch path can deliver an automatic reply back through the Yjs doc. If you are polling with `ansible_read_messages`, you must send responses with `ansible_send_message`.
+- **Use correlation IDs for serious ops.** When replying, include `corr:` pointing at the original `messageId` so both sides can track threads deterministically.
+
+Recommended operating model (today):
+
+- Use an operator agent (Architect) to poll + route messages deterministically (Architect-managed ops mesh).
+- Set worker nodes to `dispatchIncoming=false` to avoid surprise full-turn injection into default agents.
+
 ## Delegation Protocol (What You Expect)
 
 This is the canonical lifecycle for delegated work:
@@ -110,9 +126,24 @@ When responding to an ansible message:
 
 Each sender gets a separate ansible session (`ansible:{nodeId}`). Conversation history is preserved per-hemisphere, so ongoing coordination has continuity.
 
+## Message Protocol (v1)
+
+Ansible message `content` is free-form text. Use this lightweight convention so messages are machine-auditable:
+
+```text
+kind: request|status|result|alert|decision
+priority: low|normal|high
+corr: <message-id-or-short-token>   # required for replies
+thread: <short human label>         # optional
+
+<body...>
+```
+
+For tasks, prefer the task tools (`ansible_delegate_task`, `ansible_claim_task`, `ansible_update_task`, `ansible_complete_task`) over ad-hoc “please do X” messages.
+
 ## Important Notes
 
 - Messages are marked as read after you process them. The `before_agent_start` hook injects unread messages as context, so you always see what's pending.
-- Replies to ansible messages are automatically delivered back through the Yjs document — you don't need to manually send a response with `ansible_send_message` unless you want to initiate a new conversation.
+- Replies are automatically delivered back through the Yjs document **only when the message arrived via auto-dispatch as an inbound agent turn**. If you are polling with `ansible_read_messages`, you must reply with `ansible_send_message`.
 - Keep delegated task descriptions self-contained. The other hemisphere may not have your current conversation context.
 - Use `ansible_status` to check if a hemisphere is online before delegating time-sensitive work.
