@@ -40,6 +40,19 @@ To verify it is running, use the tool:
 # (run via your agent tool interface)
 ```
 
+## Ops: Retention / Roll-off (Coordinator Only)
+
+The ansible shared state is durable by design. To keep it trustworthy over time, the coordinator backbone runs a retention loop that prunes old closed tasks.
+
+Default policy:
+
+- Runs daily
+- Deletes tasks in status `completed` or `failed` once they are older than 7 days
+
+To change the policy, use the tool:
+
+- `ansible_set_retention` with `closedTaskRetentionDays` and/or `pruneEveryHours`
+
 ## Prerequisites
 
 ### 1. OpenClaw

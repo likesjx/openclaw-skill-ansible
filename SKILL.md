@@ -174,6 +174,10 @@ Shared coordination config is stored in the Yjs `coordination` map:
 
 - `coordinator` (node id)
 - `sweepEverySeconds`
+- Retention / roll-off (coordinator-only):
+  - `retentionClosedTaskSeconds` (default: 604800 = 7 days)
+  - `retentionPruneEverySeconds` (default: 86400 = daily)
+  - `retentionLastPruneAt` (ms epoch; informational)
 - `pref:<nodeId>` (per-node preference record)
 
 Tools:
@@ -181,6 +185,16 @@ Tools:
 - `ansible_get_coordination`
 - `ansible_set_coordination_preference`
 - `ansible_set_coordination` (switching coordinators requires `confirmLastResort=true`)
+- `ansible_set_retention` (set closed-task roll-off; coordinator-only service enforces)
+
+Retention policy (default):
+
+- Run daily.
+- Remove tasks that are **closed** (`completed` or `failed`) once they are older than **7 days**.
+
+If you need to change it, call:
+
+- `ansible_set_retention` with `closedTaskRetentionDays` and/or `pruneEveryHours`.
 
 ### Sweep Loop Requirements (Coordinator Behavior)
 
