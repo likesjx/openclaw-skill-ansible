@@ -28,6 +28,105 @@ Recommended operating model (today):
 - Use an operator agent (Architect) to poll + route messages deterministically (Architect-managed ops mesh).
 - Set worker nodes to `dispatchIncoming=false` to avoid surprise full-turn injection into default agents.
 
+## Setup Playbooks (What To Do In Real Life)
+
+### Add Plugin/Skill After Gateway + Agents Exist (Option A)
+
+Assumption: OpenClaw gateway and your agent(s) already exist on this machine.
+
+Run the idempotent setup command on the gateway host:
+
+```bash
+openclaw ansible setup \
+  --tier edge \
+  --backbone ws://jane-vps:1235 \
+  --inject-agent mac-jane \
+  --inject-agent architect
+```
+
+This:
+
+- clones/updates the companion skill repo into `~/.openclaw/workspace/skills/ansible`
+- patches `~/.openclaw/openclaw.json` to enable/configure the ansible plugin
+- restarts the gateway (unless `--no-restart`)
+
+### Add Ansible Support To A New Agent (Same Gateway)
+
+The plugin is installed **per gateway**, not per agent.
+
+To give a new agent access:
+
+- add the agent id to `plugins.entries.ansible.config.injectContextAgents` in `~/.openclaw/openclaw.json`
+- restart the gateway (`openclaw gateway restart`)
+
+### Add A New Gateway (New Machine/Container)
+
+Checklist:
+
+1. Install OpenClaw
+2. Install + sign into Tailscale (same tailnet; MagicDNS enabled)
+3. Choose `tier`:
+   - **backbone** for always-on infrastructure (VPS)
+   - **edge** for laptops/desktops
+4. Run `openclaw ansible setup ...`
+5. Join:
+   - backbone (first one only): `openclaw ansible bootstrap`
+   - edge: `openclaw ansible join --token <token from backbone>`
+
+## Delegation Management (Spec + Operating Model)
+
+Goal: never lose work, always close the loop, keep long-running conversations bounded.
+
+### Roles
+
+- **Coordinator**: runs a sweep loop to ensure nothing gets stuck (inbox + tasks + retries).
+- **Maintenance**: monitors the system, fixes drift, identifies defects, improves protocols.
+- **Workers**: do the delegated work.
+
+Initial policy (what we're doing now):
+
+- Coordinator: `vps-jane`
+- Maintenance: `architect`
+- Default sweep cadence: 60 seconds
+
+### Coordinator Configuration (Implemented)
+
+Shared coordination config is stored in the Yjs `coordination` map:
+
+- `coordinator` (node id)
+- `sweepEverySeconds`
+- `pref:<nodeId>` (per-node preference record)
+
+Tools:
+
+- `ansible_get_coordination`
+- `ansible_set_coordination_preference`
+- `ansible_set_coordination` (switching coordinators requires `confirmLastResort=true`)
+
+### Sweep Loop Requirements (Coordinator Behavior)
+
+Every sweep:
+
+- read unread messages (`ansible_read_messages`)
+- claim/advance tasks that are unassigned but match coordinator capabilities (optional)
+- ensure each inbound request gets one of:
+  - delegated as a task
+  - answered directly with status/result
+  - rejected with an explicit reason + next step
+- when work completes, notify the requester (message with `corr:` back to original request)
+
+### Long-Running Conversations
+
+Treat every "ongoing thread" as either:
+
+- a task with a lifecycle (preferred)
+- or a message thread with explicit `corr:` + periodic status messages (backup)
+
+Rules:
+
+- do not rely on implicit chat history; always keep the latest status in the task record or a status message
+- coordinator should detect stale threads (no update for N minutes) and ask for status or re-delegate
+
 ## Delegation Protocol (What You Expect)
 
 This is the canonical lifecycle for delegated work:
