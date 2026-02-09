@@ -29,6 +29,16 @@ Treat Ansible as a **durable inbox** (shared state) plus optional conveniences:
 - Auto-dispatch is best-effort realtime. Do not assume backlog will always trigger an automatic agent turn.
 - If you are polling messages (Architect-managed mode), you must reply using `ansible_send_message`. Automatic replies only happen when a message was dispatched as an inbound agent turn.
 
+## Ops: Session Lock Sweeper (Recommended Default)
+
+OpenClaw agent sessions can become stuck due to stale `.jsonl.lock` files. The ansible plugin includes a gateway-side service (`ansible-lock-sweep`) that periodically deletes lock files that are stale (mtime-based).
+
+To verify it is running, use the tool:
+
+```bash
+openclaw ansible lock-sweep-status
+```
+
 ## Prerequisites
 
 ### 1. OpenClaw

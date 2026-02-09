@@ -28,6 +28,35 @@ Recommended operating model (today):
 - Use an operator agent (Architect) to poll + route messages deterministically (Architect-managed ops mesh).
 - Set worker nodes to `dispatchIncoming=false` to avoid surprise full-turn injection into default agents.
 
+### Listener vs. Sweep (Why Both Exist)
+
+There is still a **listener**: the ansible plugin can observe Yjs state and attempt realtime dispatch when new messages arrive.
+
+But for reliability you should assume:
+
+- The listener is **best-effort** (subject to connectivity, process lifecycle, and dispatch failures).
+- The **sweep** is the reliability backstop (ensures backlog is handled and the loop is closed).
+
+Operationally:
+
+- If `dispatchIncoming=true` for an agent, the listener may inject an inbound agent turn.
+- If `dispatchIncoming=false` (recommended for most worker agents), only the sweep/polling path will notice unread messages/tasks.
+
+### Session Lock Hygiene (Required For Reliability)
+
+OpenClaw agent sessions can become stuck due to stale `.jsonl.lock` files. To make this safe by default, the ansible plugin ships a gateway-side lock sweeper service.
+
+Expectations:
+
+- Every gateway runs `ansible-lock-sweep` by default (unless explicitly disabled).
+- It periodically deletes session lock files that are stale (mtime-based).
+
+Tooling:
+
+- `ansible_lock_sweep_status` reports whether the service is enabled and what it has been doing (last run, totals, config).
+
+If a gateway/operator reports “agent hangs forever”, check `ansible_lock_sweep_status` first.
+
 ## Setup Playbooks (What To Do In Real Life)
 
 ### Add Plugin/Skill After Gateway + Agents Exist (Option A)
@@ -152,6 +181,12 @@ Notes:
 - The task creator is the source of truth for "who asked".
 - The task claimer is responsible for driving the task to completion.
 
+### Task IDs (Short vs Full)
+
+Status views may show short task IDs (prefixes). If you only have an ID prefix, use:
+
+- `ansible_find_task` to resolve the full task id/key
+
 ## Relationship Modes
 
 - **Hemispheres**: Openly share context/thoughts. Assume synchronized intent.
@@ -198,11 +233,19 @@ When responding to an ansible message:
 ### Task Delegation
 - **ansible_delegate_task** — Create a task for another hemisphere. Include context so the other body can work independently.
 - **ansible_claim_task** — Claim a pending task to work on it.
+- **ansible_update_task** — Update task status/notes while working (use `in_progress` updates).
 - **ansible_complete_task** — Mark a claimed task as completed with a result summary.
+- **ansible_find_task** — Resolve a task by id prefix/title when you only have partial info.
 
 ### Context Sharing
 - **ansible_update_context** — Update your current focus, active threads, or record decisions. Other hemispheres see this in their context injection.
 - **ansible_status** — Check which hemispheres are online, what they're working on, pending tasks, and unread message count.
+
+### Coordination + Ops
+- **ansible_get_coordination** — Read the current coordinator and sweep cadence.
+- **ansible_set_coordination_preference** — Set this node’s preference for coordinator/cadence.
+- **ansible_set_coordination** — Switch coordinators (last resort; requires explicit confirmation).
+- **ansible_lock_sweep_status** — Inspect gateway lock sweeper status/config.
 
 ## When to Use Ansible
 
