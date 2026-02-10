@@ -101,6 +101,12 @@ OpenClaw skills are markdown files (`SKILL.md`) that get injected into the agent
 3. **Message handling** — How to process incoming ansible messages and when replies are automatic vs. manual
 4. **Coordination patterns** — Best practices for multi-body task delegation and context sharing
 
+## Architecture
+
+For a single document explaining how the plugin and skill integrate with OpenClaw, see:
+
+- `openclaw-plugin-ansible/docs/openclaw-integration.md` in the plugin repo
+
 ## Updating
 
 Pull the latest version:
