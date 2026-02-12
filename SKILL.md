@@ -12,6 +12,34 @@ Ansible is a distributed coordination layer. It can be used in two different rel
 
 In this workspace, default to **Friends/Employees** unless you have an explicit instruction that a node is a mirrored hemisphere.
 
+## Gateway Compatibility Contract (OpenClaw v2026.2.9+)
+
+Before relying on ansible tools, enforce this baseline:
+
+- Plugin manifest exists at `openclaw.plugin.json` and includes `id` + `configSchema`.
+- Plugin config includes `plugins.entries.ansible.config.tier` (`backbone` or `edge`).
+- Plugin package exposes `openclaw.extensions` pointing to `./dist/index.js`.
+- Runtime has readable plugin files for the gateway uid:gid (commonly `1000:1000`).
+
+If any of the above fails, stop orchestration work and surface a remediation message first.
+
+## Fast Verification Checklist (Operator Runbook)
+
+When asked to validate ansible health, run this exact sequence:
+
+1. `ls -la /home/deploy/code/openclaw-plugin-ansible`
+2. `cat /home/deploy/apps/jane/data/openclaw.json | jq '.plugins.entries.ansible'`
+3. `jq '.id, .configSchema.required, .configSchema.properties.tier, .configSchema.properties.capabilities' /home/deploy/code/openclaw-plugin-ansible/openclaw.plugin.json`
+4. `jq '.openclaw.extensions, .main, .exports' /home/deploy/code/openclaw-plugin-ansible/package.json`
+5. `openclaw doctor --only-check`
+6. `docker restart jane-gateway`
+7. `docker logs -f --since=5m jane-gateway | rg -i "plugin|ansible|error|invalid config"`
+
+Behavior expectations:
+
+- If checks pass, continue normal ansible operations.
+- If checks fail, propose minimal reversible edits with backups and re-run the checklist.
+
 ## Reliability Rules (If You Want To Rely On Ansible Completely)
 
 Treat Ansible as a **durable inbox** (shared Yjs state), not as “turns always trigger automatically”.
