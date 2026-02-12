@@ -107,6 +107,11 @@ For a single document explaining how the plugin and skill integrate with OpenCla
 
 - `openclaw-plugin-ansible/docs/openclaw-integration.md` in the plugin repo
 
+For delegation policy standardization (identity table + coordinator distribution/ACK), see:
+
+- `openclaw-plugin-ansible/docs/delegation-directory.md`
+- `openclaw-plugin-ansible/docs/identity-delegation-template.md`
+
 ## Updating
 
 Pull the latest version:
