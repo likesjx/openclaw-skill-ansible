@@ -326,6 +326,7 @@ When responding to an ansible message:
 - **ansible_send_message** — Send a message to another hemisphere. Use `to` to target a specific node, or omit for broadcast.
 - **ansible_read_messages** — Read messages. Defaults to unread only; use `all: true` for history.
 - **ansible_mark_read** — Mark messages as read. Omit `messageIds` to mark all as read.
+- **ansible_delete_messages** — Admin-only emergency cleanup. Destructive and strongly discouraged for normal agent workflows. Never call unless a human operator explicitly directs it for incident cleanup.
 
 ### Task Delegation
 - **ansible_delegate_task** — Create a task for another hemisphere. Include context so the other body can work independently.

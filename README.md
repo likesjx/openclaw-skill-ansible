@@ -21,6 +21,8 @@ If you want only a dedicated operator agent (e.g., Architect) to manage cross-no
 
 In this mode, the operator agent polls using `ansible_read_messages` and replies using `ansible_send_message`.
 
+Destructive emergency purge exists (`ansible_delete_messages` / `openclaw ansible messages-delete`) but is admin-gated and should only be used by a human operator during incident cleanup.
+
 ## Reliability Notes (Important)
 
 Treat Ansible as a **durable inbox** (shared state) plus optional conveniences:
