@@ -12,6 +12,33 @@ Ansible is a distributed coordination layer. It can be used in two different rel
 
 In this workspace, default to **Friends/Employees** unless you have an explicit instruction that a node is a mirrored hemisphere.
 
+## Human Visibility Contract (Required on Pickup)
+
+When an agent picks up work that interfaces with the user, it must proactively notify the human-facing inbox.
+
+Required behavior (no silent execution):
+
+- Send `ACK` immediately on pickup.
+  Include: task/conversation id, owner, and next update ETA.
+- Send `IN_PROGRESS` updates every 10 minutes or at each milestone, whichever is sooner.
+  Include: what changed, current blocker (if any), and next step.
+- Send `DONE` or `BLOCKED` as the terminal message.
+  Include: result summary, links/ids/artifacts, and explicit handoff ask if blocked.
+
+Routing rules:
+
+- Notify the human-facing agent/session (for this workspace: `Jared’s MacBook Air`), not an internal coordination alias.
+- Reuse the same `conversation_id` as the originating task/message thread.
+- Keep updates concise and actionable; avoid status spam outside this cadence.
+
+CLI template (replace placeholders):
+
+```bash
+openclaw ansible send --to "Jared’s MacBook Air" --conversation-id <cid> --kind status --message "ACK: picked up <task>"
+openclaw ansible send --to "Jared’s MacBook Air" --conversation-id <cid> --kind status --message "IN_PROGRESS: <update>"
+openclaw ansible send --to "Jared’s MacBook Air" --conversation-id <cid> --kind result --message "DONE: <result>"
+```
+
 ## Gateway Compatibility Contract (OpenClaw v2026.2.9+)
 
 Before relying on ansible tools, enforce this baseline:
