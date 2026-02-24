@@ -1,0 +1,9 @@
+name: openclaw-skill-ansible
+owner: mac-jane
+contact: @jared
+runtime: python3
+required_env: []
+permissions:
+  network: conditional
+  billing: false
+risk_level: medium
