@@ -1,137 +1,33 @@
-# openclaw-skill-ansible
+# meshops-control-plane
 
-OpenClaw skill for the [ansible plugin](https://github.com/likesjx/openclaw-plugin-ansible) — teaches your agent how to coordinate across multiple OpenClaw nodes (friends/employees or hemispheres).
+Secure mesh control-plane skill for gateway operations, capability contracts, and delegation/execution skill-pair lifecycle management.
 
-## What This Skill Does
+Display name:
 
-When the ansible plugin is installed, your agent gets tools for inter-hemisphere communication, task delegation, and context sharing. This skill provides the behavioral instructions the agent needs to use those tools effectively:
+- MeshOps Control Plane
 
-- **Identity awareness** — How to recognize hemisphere messages (self-to-self) vs. messages from other agents (friends/employees)
-- **Communication patterns** — When to be direct (hemispheres) vs. when to provide context (other agents)
-- **Tool usage guidance** — When to delegate tasks, send messages, or update shared context
-- **Session behavior** — How ansible sessions and message routing work under the hood
+## What It Provides
 
-Without this skill, the agent has the tools but doesn't know the conventions for using them effectively.
+1. preflight checks (`preflight`)
+2. plugin install/setup/verification (`setup-ansible-plugin`)
+3. log collection (`collect-logs`)
+4. capability/delegation architecture references aligned to real plugin tools
+5. explicitly gated high-risk actions (`run-cmd`, `deploy-skill`)
 
-## Recommended: Architect-Managed Ops Mesh
+## Delegation Pair Contract
 
-If you want only a dedicated operator agent (e.g., Architect) to manage cross-node coordination, configure the plugin with:
-- `injectContext=false` (no cross-node prompt injection)
-- `dispatchIncoming=false` (no auto-dispatch of ansible messages into the default agent)
+1. delegation skill defines requester behavior and task shaping
+2. execution skill defines claim/execute/reply behavior
+3. capability publish wires both refs into routing and lifecycle evidence
+4. unpublish removes eligibility and preserves operator audit trail
 
-In this mode, the operator agent polls using `ansible_read_messages` and replies using `ansible_send_message`.
+## High-Risk Gates
 
-Destructive emergency purge exists (`ansible_delete_messages` / `openclaw ansible messages-delete`) but is admin-gated and should only be used by a human operator during incident cleanup.
+1. `OPENCLAW_ALLOW_HIGH_RISK=1`
+2. `OPENCLAW_ALLOW_RUN_CMD=1` for `run-cmd`
+3. `OPENCLAW_ALLOW_DEPLOY_SKILL=1` for `deploy-skill`
+4. caller allowlist via `OPENCLAW_ALLOWED_CALLERS`
 
-## Reliability Notes (Important)
+## Capability Alignment
 
-Treat Ansible as a **durable inbox** (shared state) plus optional conveniences:
-
-- Messages persist and can always be read via `ansible_read_messages`.
-- Auto-dispatch is best-effort delivery; on reconnect it reconciles backlog deterministically. Still treat the shared state as the source of truth.
-- If you are polling messages (Architect-managed mode), you must reply using `ansible_send_message`. Automatic replies only happen when a message was dispatched as an inbound agent turn.
-
-## Ops: Session Lock Sweeper (Recommended Default)
-
-OpenClaw agent sessions can become stuck due to stale `.jsonl.lock` files. The ansible plugin includes a gateway-side service (`ansible-lock-sweep`) that periodically deletes lock files that are stale (mtime-based).
-
-To verify it is running, use the tool:
-
-```bash
-# tool name: ansible_lock_sweep_status
-# (run via your agent tool interface)
-```
-
-## Ops: Retention / Roll-off (Coordinator Only)
-
-The ansible shared state is durable by design. To keep it trustworthy over time, the coordinator backbone runs a retention loop that prunes old closed tasks.
-
-Default policy:
-
-- Runs daily
-- Deletes tasks in status `completed` or `failed` once they are older than 7 days
-
-To change the policy, use the tool:
-
-- `ansible_set_retention` with `closedTaskRetentionDays` and/or `pruneEveryHours`
-
-## Prerequisites
-
-### 1. OpenClaw
-
-Install OpenClaw on all nodes that will participate in the ansible mesh:
-
-```bash
-npm install -g openclaw
-```
-
-### 2. Ansible Plugin
-
-The [openclaw-plugin-ansible](https://github.com/likesjx/openclaw-plugin-ansible) must be installed and configured on every node. See the plugin README for full setup instructions including:
-
-- Tailscale networking between nodes
-- Backbone vs. edge node configuration
-- Network bootstrap and node invitation
-
-```bash
-openclaw plugins install likesjx/openclaw-plugin-ansible
-```
-
-## Install
-
-Clone into your OpenClaw skills directory:
-
-```bash
-cd ~/.openclaw/workspace/skills
-git clone https://github.com/likesjx/openclaw-skill-ansible.git ansible
-```
-
-Restart your OpenClaw gateway to pick up the skill:
-
-```bash
-openclaw gateway restart
-```
-
-The skill is loaded automatically when the gateway starts. Verify by checking the agent's system prompt — it should include the ansible coordination instructions.
-
-## How It Works
-
-OpenClaw skills are markdown files (`SKILL.md`) that get injected into the agent's system prompt. This skill teaches the agent:
-
-1. **Hemispheres vs. Friends** — The agent learns to distinguish between its own mirrored instances (direct, efficient communication) and separate agents (contextual, collaborative communication)
-2. **Tool semantics** — When to use `ansible_send_message` vs. `ansible_delegate_task` vs. `ansible_update_context`
-3. **Message handling** — How to process incoming ansible messages and when replies are automatic vs. manual
-4. **Coordination patterns** — Best practices for multi-body task delegation and context sharing
-
-## Architecture
-
-For a single document explaining how the plugin and skill integrate with OpenClaw, see:
-
-- `openclaw-plugin-ansible/docs/openclaw-integration.md` in the plugin repo
-
-For delegation policy standardization (identity table + coordinator distribution/ACK), see:
-
-- `openclaw-plugin-ansible/docs/delegation-directory.md`
-- `openclaw-plugin-ansible/docs/identity-delegation-template.md`
-
-## Updating
-
-Pull the latest version:
-
-```bash
-cd ~/.openclaw/workspace/skills/ansible
-git pull
-```
-
-Restart the gateway to pick up changes.
-
-## File Structure
-
-```
-├── README.md    # This file — setup and usage instructions for humans
-└── SKILL.md     # Agent instructions — injected into the system prompt
-```
-
-## License
-
-MIT
+See `docs/plugin-capabilities-actual-v2026-03-03.md` for inventory from actual plugin code.
