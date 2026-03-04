@@ -1,416 +1,174 @@
 ---
 name: ansible
-description: Distributed coordination between OpenClaw nodes (friends/employees or hemispheres). Use ansible tools to communicate, delegate tasks, share context, and coordinate work across machines.
+description: MeshOps distributed coordination mesh for OpenClaw gateways: ring-of-trust admission, CRDT-synced state, capability-contract routing, and governed delegation. Named for the ansible from Ender's Game, not the infrastructure tool.
 ---
 
-# Ansible — Multi-Body Coordination
+# Ansible - MeshOps Coordination Skill
 
-Ansible is a distributed coordination layer. It can be used in two different relationship modes:
+## What This Is
 
-- **Friends/Employees (recommended)**: other nodes are *different* agents with separate memory and boundaries. Treat them like collaborators. Provide context and do not assume shared state.
-- **Hemispheres (advanced)**: other nodes are mirrored instances of *you* (shared intent, often shared memory/context). Treat it as self-to-self coordination.
+Ansible is a distributed coordination layer that lets you operate across multiple OpenClaw gateways as one coordinated mesh.
 
-In this workspace, default to **Friends/Employees** unless you have an explicit instruction that a node is a mirrored hemisphere.
+Four pillars:
 
-## Human Visibility Contract (Required on Pickup)
-
-When an agent picks up work that interfaces with the user, it must proactively notify the human-facing inbox.
-
-Required behavior (no silent execution):
-
-- Send `ACK` immediately on pickup.
-  Include: task/conversation id, owner, and next update ETA.
-- Send `IN_PROGRESS` updates every 10 minutes or at each milestone, whichever is sooner.
-  Include: what changed, current blocker (if any), and next step.
-- Send `DONE` or `BLOCKED` as the terminal message.
-  Include: result summary, links/ids/artifacts, and explicit handoff ask if blocked.
-
-Routing rules:
-
-- Notify the human-facing agent/session (for this workspace: `Jared’s MacBook Air`), not an internal coordination alias.
-- Reuse the same `conversation_id` as the originating task/message thread.
-- Keep updates concise and actionable; avoid status spam outside this cadence.
-
-CLI template (replace placeholders):
-
-```bash
-openclaw ansible send --to "Jared’s MacBook Air" --conversation-id <cid> --kind status --message "ACK: picked up <task>"
-openclaw ansible send --to "Jared’s MacBook Air" --conversation-id <cid> --kind status --message "IN_PROGRESS: <update>"
-openclaw ansible send --to "Jared’s MacBook Air" --conversation-id <cid> --kind result --message "DONE: <result>"
-```
-
-## Gateway Compatibility Contract (OpenClaw v2026.2.9+)
-
-Before relying on ansible tools, enforce this baseline:
-
-- Plugin manifest exists at `openclaw.plugin.json` and includes `id` + `configSchema`.
-- Plugin config includes `plugins.entries.ansible.config.tier` (`backbone` or `edge`).
-- Plugin package exposes `openclaw.extensions` pointing to `./dist/index.js`.
-- Runtime has readable plugin files for the gateway uid:gid (commonly `1000:1000`).
-
-If any of the above fails, stop orchestration work and surface a remediation message first.
-
-## Fast Verification Checklist (Operator Runbook)
-
-When asked to validate ansible health, run this exact sequence:
-
-1. `ls -la /home/deploy/code/openclaw-plugin-ansible`
-2. `cat /home/deploy/apps/jane/data/openclaw.json | jq '.plugins.entries.ansible'`
-3. `jq '.id, .configSchema.required, .configSchema.properties.tier, .configSchema.properties.capabilities' /home/deploy/code/openclaw-plugin-ansible/openclaw.plugin.json`
-4. `jq '.openclaw.extensions, .main, .exports' /home/deploy/code/openclaw-plugin-ansible/package.json`
-5. `openclaw doctor --only-check`
-6. `docker restart jane-gateway`
-7. `docker logs -f --since=5m jane-gateway | rg -i "plugin|ansible|error|invalid config"`
-
-Behavior expectations:
-
-- If checks pass, continue normal ansible operations.
-- If checks fail, propose minimal reversible edits with backups and re-run the checklist.
-
-## Reliability Rules (If You Want To Rely On Ansible Completely)
-
-Treat Ansible as a **durable inbox** (shared Yjs state), not as “turns always trigger automatically”.
-
-Rules:
-
-- **Unread messages are source of truth.** Always use `ansible_status` and `ansible_read_messages` to confirm what is pending.
-- **Auto-dispatch is best-effort delivery.** It injects inbound work into the agent loop when possible, and on reconnect it reconciles backlog deterministically. Treat the shared Yjs doc as the source of truth anyway.
-- **If you read messages via tools, you must reply explicitly.** Only the auto-dispatch path can deliver an automatic reply back through the Yjs doc. If you are polling with `ansible_read_messages`, you must send responses with `ansible_send_message`.
-- **Use correlation IDs for serious ops.** When replying, include `corr:` pointing at the original `messageId` so both sides can track threads deterministically.
-
-Recommended operating model (today):
-
-- Use an operator agent (Architect) to poll + route messages deterministically (Architect-managed ops mesh).
-- Set worker nodes to `dispatchIncoming=false` to avoid surprise full-turn injection into default agents.
-
-### Listener vs. Sweep (Why Both Exist)
-
-There is still a **listener**: the ansible plugin can observe Yjs state and attempt realtime dispatch when new messages arrive.
-
-But for reliability you should assume:
-
-- The listener is **best-effort** (subject to connectivity, process lifecycle, and dispatch failures).
-- The **sweep** is the operational backstop: it is how you detect stuck work and close loops with explicit ownership and notifications.
-
-Operationally:
-
-- If `dispatchIncoming=true` for an agent, the listener may inject an inbound agent turn.
-- If `dispatchIncoming=false` (recommended for most worker agents), only the sweep/polling path will notice unread messages/tasks.
-
-### Session Lock Hygiene (Required For Reliability)
-
-OpenClaw agent sessions can become stuck due to stale `.jsonl.lock` files. To make this safe by default, the ansible plugin ships a gateway-side lock sweeper service.
-
-Expectations:
-
-- Every gateway runs `ansible-lock-sweep` by default (unless explicitly disabled).
-- It periodically deletes session lock files that are stale (mtime-based).
-
-Tooling:
-
-- `ansible_lock_sweep_status` reports whether the service is enabled and what it has been doing (last run, totals, config).
-
-If a gateway/operator reports “agent hangs forever”, check `ansible_lock_sweep_status` first.
-
-## Coordinator Sweep Reporting (Non-Noisy, Actionable Only)
-
-Goal: sweeps should *not* spam humans or other agents. Only report problems that are fixable now, with a concrete action.
-
-### Who Gets Notified
-
-- Coordinator (default: `vps-jane`) notifies the maintenance agent (Architect) only when `DEGRADED`.
-- Coordinator does not message the human user unless explicitly asked.
-
-### Output Format (Strict)
-
-When `OK`: be silent (default) OR emit a single line if explicitly requested:
-
-`OK: heartbeat=online, tasks=0, unread=0`
-
-When `DEGRADED`: send one concise message with:
-
-- `DEGRADED:` one-line summary
-- `Action:` the one-step fix to try first
-- `Evidence:` 1-2 concrete data points (timestamps/ids), no long lists
-
-### DEGRADED Triggers (Actionable)
-
-Only trigger on issues where the coordinator can do something right now:
-
-- Coordinator heartbeat stale (e.g. `ageSeconds > 2 * sweepEverySeconds`)
-  - Action: restart gateway or investigate timer/crash.
-- Backbone connectivity broken (repeated `ECONNREFUSED` / sync failures observed)
-  - Action: restart gateway; check docker/container lifecycle.
-- Stuck tasks:
-  - pending tasks assigned to an online node older than threshold
-  - claimed/in_progress tasks with no updates older than threshold
-  - Action: nudge assignee; reassign or escalate.
-- Unread messages addressed to coordinator (or broadcast) older than threshold
-  - Action: dispatch/reconcile; reply/route.
-- Session lock sweeper removing locks repeatedly or reporting persistent locks
-  - Action: investigate session lock source; adjust staleSeconds if needed.
-
-### Things To Suppress (Noise)
-
-Do not report:
-
-- stale historical pulse entries ("zombie nodes") by themselves
-- registry clutter / old container ids
-- counts that you cannot verify with `ansible_read_messages` / task list tools
-
-### Required Data Source
-
-Sweeps must rely on `ansible_status` (and `ansible_read_messages` plus task tools when needed). Do not re-implement unread counting or stale classification in the coordinator.
-
-## Setup Playbooks (What To Do In Real Life)
-
-### Add Plugin/Skill After Gateway + Agents Exist (Option A)
-
-Assumption: OpenClaw gateway and your agent(s) already exist on this machine.
-
-Run the idempotent setup command on the gateway host:
-
-```bash
-openclaw ansible setup \
-  --tier edge \
-  --backbone ws://jane-vps:1235 \
-  --inject-agent mac-jane \
-  --inject-agent architect
-```
-
-This:
-
-- clones/updates the companion skill repo into `~/.openclaw/workspace/skills/ansible`
-- patches `~/.openclaw/openclaw.json` to enable/configure the ansible plugin
-- restarts the gateway (unless `--no-restart`)
-
-### Add Ansible Support To A New Agent (Same Gateway)
-
-The plugin is installed **per gateway**, not per agent.
-
-To give a new agent access:
-
-- add the agent id to `plugins.entries.ansible.config.injectContextAgents` in `~/.openclaw/openclaw.json`
-- restart the gateway (`openclaw gateway restart`)
-
-### Add A New Gateway (New Machine/Container)
-
-Checklist:
-
-1. Install OpenClaw
-2. Install + sign into Tailscale (same tailnet; MagicDNS enabled)
-3. Choose `tier`:
-   - **backbone** for always-on infrastructure (VPS)
-   - **edge** for laptops/desktops
-4. Run `openclaw ansible setup ...`
-5. Join:
-   - backbone (first one only): `openclaw ansible bootstrap`
-   - edge: `openclaw ansible join --token <token from backbone>`
-
-## Delegation Management (Spec + Operating Model)
-
-Goal: never lose work, always close the loop, keep long-running conversations bounded.
-
-### Roles
-
-- **Coordinator**: runs a sweep loop to ensure nothing gets stuck (inbox + tasks + retries).
-- **Maintenance**: monitors the system, fixes drift, identifies defects, improves protocols.
-- **Workers**: do the delegated work.
-
-Initial policy (what we're doing now):
-
-- Coordinator: `vps-jane`
-- Maintenance: `architect`
-- Default sweep cadence: 60 seconds
-
-### Coordinator Configuration (Implemented)
-
-Shared coordination config is stored in the Yjs `coordination` map:
-
-- `coordinator` (node id)
-- `sweepEverySeconds`
-- Retention / roll-off (coordinator-only):
-  - `retentionClosedTaskSeconds` (default: 604800 = 7 days)
-  - `retentionPruneEverySeconds` (default: 86400 = daily)
-  - `retentionLastPruneAt` (ms epoch; informational)
-- `pref:<nodeId>` (per-node preference record)
-
-Tools:
-
-- `ansible_get_coordination`
-- `ansible_set_coordination_preference`
-- `ansible_set_coordination` (switching coordinators requires `confirmLastResort=true`)
-- `ansible_set_retention` (set closed-task roll-off; coordinator-only service enforces)
-
-Retention policy (default):
-
-- Run daily.
-- Remove tasks that are **closed** (`completed` or `failed`) once they are older than **7 days**.
-
-If you need to change it, call:
-
-- `ansible_set_retention` with `closedTaskRetentionDays` and/or `pruneEveryHours`.
-
-### Sweep Loop Requirements (Coordinator Behavior)
-
-Every sweep:
-
-- read status (`ansible_status`) and unread messages (`ansible_read_messages`)
-- claim/advance tasks that are unassigned but match coordinator capabilities (optional, do not steal work)
-- ensure each inbound request gets one of:
-  - delegated as a task
-  - answered directly with status/result
-  - rejected with an explicit reason + next step
-- when work completes, notify the requester (message with `corr:` back to original request)
-
-Coordinator report policy:
-
-- Default: silent on OK.
-- Only emit a report when there is an actionable `DEGRADED` trigger (see "Coordinator Sweep Reporting").
-
-### Long-Running Conversations
-
-Treat every "ongoing thread" as either:
-
-- a task with a lifecycle (preferred)
-- or a message thread with explicit `corr:` + periodic status messages (backup)
-
-Rules:
-
-- do not rely on implicit chat history; always keep the latest status in the task record or a status message
-- coordinator should detect stale threads (no update for N minutes) and ask for status or re-delegate
-
-## Delegation Protocol (What You Expect)
-
-This is the canonical lifecycle for delegated work:
-
-1. **Asker creates delegation**
-   - Use `ansible_delegate_task` with enough context for the askee to work independently.
-   - The asker tracks the ask locally (does not do the work in parallel).
-
-2. **Askee claims and works**
-   - Askee uses `ansible_claim_task`.
-   - Askee updates the task status while working:
-     - Use `ansible_update_task` with `status: in_progress` and a short note.
-     - Repeat updates as needed until done.
-
-3. **Askee completes and closes**
-   - Askee uses `ansible_complete_task` with a clear `result`.
-   - Completion must notify the asker (plugin should send a direct message to the task creator).
-
-4. **Asker reports back to the human**
-   - Asker reads the completion notification and explains what happened + any follow ups.
-
-Notes:
-- The task creator is the source of truth for "who asked".
-- The task claimer is responsible for driving the task to completion.
-
-### Task IDs (Short vs Full)
-
-Status views may show short task IDs (prefixes). If you only have an ID prefix, use:
-
-- `ansible_find_task` to resolve the full task id/key
+1. Ring of Trust: invite/join handshake, auth-gate WebSocket tickets, ed25519-signed capability manifests, per-action safety gates, and token lifecycle.
+2. Mesh Sync: Yjs CRDT replication over Tailscale. Messages, tasks, context, and pulse remain durable across reconnects and restarts.
+3. Capability Routing: publish/unpublish capability contracts. Each contract references a delegation skill (requester) and an execution skill (executor).
+4. Lifecycle Ops: lock sweep, retention/pruning, coordinator sweep, and deployment hygiene.
 
 ## Relationship Modes
 
-- **Hemispheres**: Openly share context/thoughts. Assume synchronized intent.
-- **Friends/Employees**: Communicate like collaborators. Do not assume shared state; provide context explicitly.
+- Friends/Employees (default): other nodes are different agents. Provide context and communicate explicitly.
+- Hemispheres (advanced): mirrored instances of the same identity. Shared intent and direct communication.
 
-If you need hard boundaries (e.g., only Architect knows VPS details), use configuration to restrict prompt injection/auto-dispatch and keep sensitive node details out of other agents' contexts.
+Default to Friends/Employees unless explicitly told a node is a hemisphere.
 
-## Hemispheres vs. Friends
+## Node Topology
 
-**Hemispheres** are mirrored instances of YOU — same identity, same memory, same purpose. When you talk to your other hemisphere, you are talking to yourself on another machine. Be direct and efficient.
+- Backbone: always-on nodes (VPS/servers) that host Yjs WebSocket.
+- Edge: intermittent nodes (laptops/desktops) that connect to backbone.
 
-**Friends or employees** are DIFFERENT agents with their own identity, memory, and purpose. If you encounter another agent that is NOT your hemisphere (different name, different goals), that's a friend or employee — communicate with them as you would with a collaborator, providing context they wouldn't already have.
+## Human Visibility Contract (Required on Pickup)
 
-How to tell the difference:
-- Ansible messages from nodes in your hemisphere list → **yourself** (direct, no pleasantries)
-- Messages from unknown agents or via different channels → **friend/employee** (provide context, be collaborative)
+When taking coordination work, maintain explicit lifecycle updates:
 
-## Hemisphere Topology
+1. ACK: confirm receipt and summarize intent.
+2. IN_PROGRESS: emit progress updates at meaningful checkpoints.
+3. DONE or BLOCKED: close with evidence, next action, and owner.
 
-Your hemispheres are configured in the ansible plugin. Typical setups include:
+Use `conversation_id` consistently for all related updates.
 
-- **Backbone nodes** (always-on) — Servers, VPS instances. Handle long-running tasks, scheduled work, background coordination.
-- **Edge nodes** (intermittent) — Laptops, desktops. Have local filesystem access, run interactively with the user.
+## Ring of Trust - Behavioral Rules
 
-Each hemisphere has its own conversations and sessions, but you share memory, context, tasks, and messages through ansible.
+- Unknown nodes require invite-based admission. Do not bypass.
+- High-risk capability publishes require human approval artifacts.
+- Respect caller gates (`OPENCLAW_ALLOWED_CALLERS`) and high-risk flags.
+- Never expose tokens in plaintext messages/logs/shared state.
+- When signature enforcement is on, only accept manifests signed by trusted publisher keys.
 
-## Incoming Ansible Messages
+## Gateway Compatibility Contract
 
-When another hemisphere sends you a message, it arrives as an agent turn with channel `Ansible` and a sender name matching the originating node. Treat these like direct messages from yourself on another body.
+- Validate plugin is installed and readable before assuming tool availability.
+- Verify tier assumptions (backbone vs edge) before mutating coordination settings.
+- Treat gateway runtime as source of truth for active topology and health.
 
-When responding to an ansible message:
-- You are talking to yourself on another machine. Be direct and efficient — no pleasantries needed.
-- If the message is a task request, either handle it or explain why you can't.
-- If it's a status update or context share, acknowledge and integrate the information.
-- If you need to send a follow-up, use the `ansible_send_message` tool.
+## Reliability Model
+
+### Source of Truth
+
+Shared Yjs state is authoritative.
+
+### Delivery Semantics
+
+- Durable: messages/tasks persist in shared state.
+- Auto-dispatch: best-effort realtime injection into sessions.
+- Heartbeat reconcile: periodic rescan recovers missed injections.
+- Retry: transient dispatch failures retry with bounded backoff.
+- Send receipts: notify configured operators when work is placed on mesh.
+
+### Operating Rules
+
+- Verify pending work with `ansible_status` and `ansible_read_messages`.
+- If polling mode is used, always reply via `ansible_send_message`.
+- Use `corr:<messageId>` for thread continuity.
+- Listener behavior is optimization; sweep/reconcile is the backstop.
+
+## Capability Contracts
+
+- A capability is a contract, not just a label.
+- Contract includes delegation and execution skill references.
+- Publishing updates routing eligibility mesh-wide.
+- Provenance is verified against trusted publisher keys when configured.
+- High-risk contracts require explicit approval artifacts.
+- Unpublish removes eligibility immediately.
+- Lifecycle evidence must capture install/wire outcomes.
+
+## Delegation Protocol
+
+1. Requester creates task with objective, context, acceptance criteria, and target policy (`to_agents` or capability).
+2. Executor claims task and sends acceptance/ETA signal.
+3. Executor performs work, emits progress, and completes with structured result.
+4. Requester reports final outcome to human and/or downstream agents.
+
+## Coordinator Behavior
+
+- Run sweep loops for stale locks, SLA drift, and backlog reconciliation.
+- Prefer record-only escalation by default when blast radius is unclear.
+- If DEGRADED, prioritize containment, visibility, and deterministic recovery.
 
 ## Available Tools
 
 ### Communication
-- **ansible_send_message** — Send a message to another hemisphere. Use `to` to target a specific node, or omit for broadcast.
-- **ansible_read_messages** — Read messages. Defaults to unread only; use `all: true` for history.
-- **ansible_mark_read** — Mark messages as read. Omit `messageIds` to mark all as read.
-- **ansible_delete_messages** — Admin-only emergency cleanup. Destructive and strongly discouraged for normal agent workflows. Never call unless a human operator explicitly directs it for incident cleanup.
+
+| Tool | Purpose |
+|------|---------|
+| `ansible_send_message` | Send targeted or broadcast message across mesh |
+| `ansible_read_messages` | Read unread messages (or full history) |
+| `ansible_mark_read` | Mark messages as read |
+| `ansible_delete_messages` | Admin-only emergency purge |
 
 ### Task Delegation
-- **ansible_delegate_task** — Create a task for another hemisphere. Include context so the other body can work independently.
-- **ansible_claim_task** — Claim a pending task to work on it.
-- **ansible_update_task** — Update task status/notes while working (use `in_progress` updates).
-- **ansible_complete_task** — Mark a claimed task as completed with a result summary.
-- **ansible_find_task** — Resolve a task by id prefix/title when you only have partial info.
 
-### Context Sharing
-- **ansible_update_context** — Update your current focus, active threads, or record decisions. Other hemispheres see this in their context injection.
-- **ansible_status** — Check which hemispheres are online, what they're working on, pending tasks, and unread message count.
+| Tool | Purpose |
+|------|---------|
+| `ansible_delegate_task` | Create task for another node/agent set |
+| `ansible_claim_task` | Claim pending task |
+| `ansible_update_task` | Update task status/progress |
+| `ansible_complete_task` | Complete task and notify requester |
+| `ansible_find_task` | Resolve task by ID/title |
 
-### Coordination + Ops
-- **ansible_get_coordination** — Read the current coordinator and sweep cadence.
-- **ansible_set_coordination_preference** — Set this node’s preference for coordinator/cadence.
-- **ansible_set_coordination** — Switch coordinators (last resort; requires explicit confirmation).
-- **ansible_lock_sweep_status** — Inspect gateway lock sweeper status/config.
+### Context and Status
+
+| Tool | Purpose |
+|------|---------|
+| `ansible_status` | Mesh health, unread, pending, and topology summary |
+| `ansible_update_context` | Update shared context/threads/decisions |
+
+### Coordination and Governance
+
+| Tool | Purpose |
+|------|---------|
+| `ansible_get_coordination` | Read coordinator configuration |
+| `ansible_set_coordination_preference` | Set node coordinator preference |
+| `ansible_set_coordination` | Switch coordinator (guarded) |
+| `ansible_set_retention` | Configure closed-task retention/pruning |
+| `ansible_get_delegation_policy` | Read delegation policy plus ACKs |
+| `ansible_set_delegation_policy` | Publish/update delegation policy |
+| `ansible_ack_delegation_policy` | Acknowledge policy version |
+| `ansible_lock_sweep_status` | Inspect lock sweep health |
+
+### Capability Lifecycle
+
+| Tool | Purpose |
+|------|---------|
+| `ansible_list_capabilities` | List published capability contracts |
+| `ansible_capability_publish` | Publish/upgrade capability contract |
+| `ansible_capability_unpublish` | Remove capability from routing |
+| `ansible_capability_lifecycle_evidence` | Show install/wire evidence for version |
+| `ansible_capability_health_summary` | Show success/error/latency summary |
 
 ## When to Use Ansible
 
-**Delegate when:**
-- A task requires capabilities you don't have (e.g., edge node needs always-on processing)
-- Work can run in the background while the user continues interactively
-- A task is better suited to another hemisphere's environment
-
-**Send messages when:**
-- Sharing results or status updates across hemispheres
-- Coordinating on a shared task
-- Alerting another hemisphere about something relevant to its work
-
-**Update context when:**
-- Starting significant work (set `currentFocus`)
-- Making architectural or design decisions (add `addDecision`)
-- Tracking parallel workstreams (add `addThread`)
+Use Ansible when work crosses gateways, needs durable coordination, or requires auditable delegation contracts.
 
 ## Session Behavior
 
-Each sender gets a separate ansible session (`ansible:{nodeId}`). Conversation history is preserved per-hemisphere, so ongoing coordination has continuity.
+- Start by checking status and pending work.
+- Prefer explicit delegation for capability-matched work.
+- Keep humans in loop via lifecycle messages.
 
-## Message Protocol (v1)
+## Message Protocol v1
 
-Ansible message `content` is free-form text. Use this lightweight convention so messages are machine-auditable:
+- Always include enough context for independent execution.
+- Use stable correlation IDs (`corr`) and conversation IDs.
+- Prefer structured payloads over freeform-only messaging.
 
-```text
-kind: request|status|result|alert|decision
-priority: low|normal|high
-corr: <message-id-or-short-token>   # required for replies
-thread: <short human label>         # optional
+## Setup Playbooks
 
-<body...>
-```
+Follow plugin setup and gateway runbooks for topology bootstrap, auth-gate, and trust settings.
 
-For tasks, prefer the task tools (`ansible_delegate_task`, `ansible_claim_task`, `ansible_update_task`, `ansible_complete_task`) over ad-hoc “please do X” messages.
+## Delegation Management
 
-## Important Notes
-
-- Messages are marked as read after you process them. The `before_agent_start` hook injects unread messages as context, so you always see what's pending.
-- Replies are automatically delivered back through the Yjs document **only when the message arrived via auto-dispatch as an inbound agent turn**. If you are polling with `ansible_read_messages`, you must reply with `ansible_send_message`.
-- Keep delegated task descriptions self-contained. The other hemisphere may not have your current conversation context.
-- Use `ansible_status` to check if a hemisphere is online before delegating time-sensitive work.
+- Keep delegation policy current and acknowledged across nodes.
+- Treat capability publishes as contract releases.
+- Roll back quickly when lifecycle evidence indicates drift or misfire.
