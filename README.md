@@ -1,33 +1,79 @@
-# meshops-control-plane
+# Ansible Skill for OpenClaw (MeshOps)
 
-Secure mesh control-plane skill for gateway operations, capability contracts, and delegation/execution skill-pair lifecycle management.
+> Named for the ansible from Ursula K. Le Guin's *The Dispossessed* and Orson Scott Card's *Ender's Game* series: instantaneous coordination across distance. Not the Red Hat infrastructure automation tool.
 
-Display name:
+OpenClaw skill that teaches your agent how to operate across a distributed mesh of gateways using the [ansible plugin](https://github.com/likesjx/openclaw-plugin-ansible).
 
-- MeshOps Control Plane
+## Four Pillars
 
-## What It Provides
+| Pillar | What It Does |
+|--------|-------------|
+| Ring of Trust | Invite/join handshake, auth-gate tickets, ed25519 manifests, per-action gates, token lifecycle |
+| Mesh Sync | Yjs CRDT replication over Tailscale so messages/tasks/context survive restarts and partitions |
+| Capability Routing | Publish capability contracts (delegation + execution skill pairs) with provenance |
+| Lifecycle Ops | Lock sweep, task retention, coordinator sweep, token hygiene |
 
-1. preflight checks (`preflight`)
-2. plugin install/setup/verification (`setup-ansible-plugin`)
-3. log collection (`collect-logs`)
-4. capability/delegation architecture references aligned to real plugin tools
-5. explicitly gated high-risk actions (`run-cmd`, `deploy-skill`)
+## What This Skill Does
 
-## Delegation Pair Contract
+The plugin gives your agent tools. This skill gives your agent behavioral instructions to use those tools correctly:
 
-1. delegation skill defines requester behavior and task shaping
-2. execution skill defines claim/execute/reply behavior
-3. capability publish wires both refs into routing and lifecycle evidence
-4. unpublish removes eligibility and preserves operator audit trail
+- when to delegate vs message vs update context
+- how to operate ring-of-trust gates without bypasses
+- coordinator vs worker operating posture
+- human visibility contract (ACK, IN_PROGRESS, DONE/BLOCKED)
+- hemisphere vs friends/employees communication modes
 
-## High-Risk Gates
+## vs Agent Teams RFC
 
-1. `OPENCLAW_ALLOW_HIGH_RISK=1`
-2. `OPENCLAW_ALLOW_RUN_CMD=1` for `run-cmd`
-3. `OPENCLAW_ALLOW_DEPLOY_SKILL=1` for `deploy-skill`
-4. caller allowlist via `OPENCLAW_ALLOWED_CALLERS`
+| | Agent Teams RFC | Ansible/MeshOps |
+|---|---|---|
+| Scope | Single gateway | Cross-gateway mesh |
+| Trust | Implicit (same gateway) | Explicit ring of trust |
+| State transport | Internal session state | Yjs CRDT over WebSocket |
+| Capability model | Tool allowlists | Signed capability contracts |
+| Lifecycle ops | Not addressed | Lock sweep, retention, rotation |
+| Status | RFC / not shipped | Working today |
 
-## Capability Alignment
+Complementary model: Agent Teams is in-gateway coordination; Ansible/MeshOps is cross-gateway trust, transport, and execution governance.
 
-See `docs/plugin-capabilities-actual-v2026-03-03.md` for inventory from actual plugin code.
+## Install
+
+```bash
+cd ~/.openclaw/workspace/skills
+git clone https://github.com/likesjx/openclaw-skill-ansible.git ansible
+openclaw gateway restart
+```
+
+## Prerequisites
+
+- [OpenClaw](https://openclaw.ai/) on all participating nodes
+- [openclaw-plugin-ansible](https://github.com/likesjx/openclaw-plugin-ansible) installed and configured
+
+## Updating
+
+```bash
+cd ~/.openclaw/workspace/skills/ansible
+git pull
+openclaw gateway restart
+```
+
+## File Structure
+
+```text
+├── README.md
+├── SKILL.md
+├── CLAWHUB.md
+├── skills/ansible-skills-admin/
+│   └── SKILL.md
+└── docs/
+    ├── operator-runbook.md
+    └── ...
+```
+
+## Naming and Trademark Notice
+
+This project's "Ansible" name refers to the fictional instantaneous-communication device from *The Dispossessed* and *Ender's Game*. It is unrelated to Red Hat Ansible, Ansible Automation Platform, or the infrastructure automation ecosystem.
+
+## License
+
+MIT
